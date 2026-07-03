@@ -1161,7 +1161,7 @@ function confirmOrder(){
     `🚚 *Entrega:* ${selEntrega==='domicilio'?'Domicilio':'Pick Up en tienda'}%0A` +
     `💳 *Forma de pago:* ${payLabels[selPay]||selPay}`;
 
-  // ── Registrar en Google Sheets ──
+  // ── Registrar en Google Sheets (vía Google Form) ──
   const sheetsData = {
     nombre: name,
     telefono: phone,
@@ -1171,20 +1171,19 @@ function confirmOrder(){
     entrega: selEntrega==='domicilio'?'Domicilio':'Pick Up',
     pago: payLabels[selPay] || selPay
   };
-  // Enviar a Google Form
-  const formId = '14-WJHYm2BzEk2KR5C63-tOKuAKQATMnBDGxseWIk-7E';
-  const formUrl = `https://docs.google.com/forms/d/${formId}/formResponse`;
-  
+  // Enviar a Google Form (ID PÚBLICO del formulario "Reporte de Ventas WEB")
+  const formPublicId = '1FAIpQLSe7BLPuAh2lixYHGOhuiJT3rQz8f4vI21tlzsWBtTzGLuE_WQ';
+  const formUrl = `https://docs.google.com/forms/u/0/d/e/${formPublicId}/formResponse`;
+
   const formData = new FormData();
-  formData.append('entry.1656564008', sheetsData.fecha || ''); // Fecha
-  formData.append('entry.1938202850', sheetsData.hora || ''); // Hora
-  formData.append('entry.1842651146', sheetsData.nombre || ''); // Nombre
-  formData.append('entry.1996889140', sheetsData.telefono || ''); // Teléfono
-  formData.append('entry.934849557', sheetsData.direccion || ''); // Dirección
-  formData.append('entry.1701784532', sheetsData.productos || ''); // Productos
-  formData.append('entry.1949383633', sheetsData.total || ''); // Total
-  formData.append('entry.1289502903', sheetsData.pago || ''); // Pago
-  
+  formData.append('entry.2027779803', sheetsData.nombre || '');    // Nombre Completo
+  formData.append('entry.394765505', sheetsData.telefono || '');   // Número de Teléfono
+  formData.append('entry.199538217', sheetsData.direccion || '');  // Dirección Exacta
+  formData.append('entry.1021520061', sheetsData.productos || ''); // Productos/Pedido
+  formData.append('entry.1515873255',
+    `Total: ${sheetsData.total} | Entrega: ${sheetsData.entrega} | Pago: ${sheetsData.pago}`
+  ); // Notas Adicionales
+
   fetch(formUrl, {
     method: 'POST',
     mode: 'no-cors',
