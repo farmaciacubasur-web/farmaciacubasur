@@ -1055,64 +1055,43 @@ function openArticle(i){
 let cart = [];
 
 // ── STOCK EN TIEMPO REAL (Google Sheets) ──
-// Reemplazá esta URL por la de tu Google Sheet publicada como CSV
-// (Archivo > Compartir > Publicar en la web > elegí la hoja "Stock" > formato CSV)
-const STOCK_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRoDTbDrU-Sis5GU3lpBkrO8JIp_LS-qwb5dBpG89yPDzc8aR7G9JlSjspGMBWekg/pub?output=csv';
+// ID de la hoja de cálculo (se saca del link de edición: .../d/ESTE_ID/edit)
+const STOCK_SHEET_ID = '1GPhyxNIvggPzOmFemQQd-9aXt5e3jd1W';
+const STOCK_SHEET_NAME = 'Hoja1'; // nombre de la pestaña donde están los productos
 let stockMap = {}; // { 'Nombre exacto del producto': cantidadDisponible }
 
-function parseCSVLine(line){
-  // Parser simple que respeta comillas (para nombres o precios con comas dentro)
-  const result = [];
-  let cur = '';
-  let inQuotes = false;
-  for(let i=0;i<line.length;i++){
-    const ch = line[i];
-    if(ch === '"'){
-      if(inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
-      else { inQuotes = !inQuotes; }
-    } else if(ch === ',' && !inQuotes){
-      result.push(cur); cur='';
-    } else {
-      cur += ch;
-    }
-  }
-  result.push(cur);
-  return result.map(c=>c.trim());
-}
-
-function parseStockCSV(csvText){
-  const lines = csvText.split(/\r?\n/).filter(l=>l.trim().length>0);
-  const rows = lines.map(parseCSVLine);
-  // Buscamos la fila de encabezados: la que contenga "Producto" y "Stock"
-  let headerIdx = -1, colProducto = -1, colStock = -1;
-  for(let i=0;i<rows.length;i++){
-    const idxP = rows[i].findIndex(c=>c.toLowerCase().includes('producto'));
-    const idxS = rows[i].findIndex(c=>c.toLowerCase().includes('stock'));
-    if(idxP!==-1 && idxS!==-1){ headerIdx=i; colProducto=idxP; colStock=idxS; break; }
-  }
-  const map = {};
-  if(headerIdx===-1) return map; // no se encontraron encabezados esperados
-  for(let i=headerIdx+1;i<rows.length;i++){
-    const nombre = (rows[i][colProducto]||'').trim();
-    const stockRaw = (rows[i][colStock]||'').trim();
-    if(!nombre) continue;
-    const stock = parseInt(stockRaw, 10);
-    map[nombre] = isNaN(stock) ? Infinity : stock; // vacío o no numérico = no bloquear
-  }
-  return map;
-}
-
-async function loadStock(){
-  if(!STOCK_SHEET_CSV_URL || STOCK_SHEET_CSV_URL.includes('PEGA_AQUI')) return;
+function handleStockResponse(response){
   try{
-    const res = await fetch(STOCK_SHEET_CSV_URL, {cache:'no-store'});
-    const text = await res.text();
-    stockMap = parseStockCSV(text);
+    const table = response.table;
+    const cols = table.cols.map(c => (c.label || '').toLowerCase());
+    const colProducto = cols.findIndex(c => c.includes('producto'));
+    const colStock = cols.findIndex(c => c.includes('stock'));
+    const map = {};
+    if(colProducto !== -1 && colStock !== -1){
+      table.rows.forEach(row => {
+        const cP = row.c[colProducto];
+        const cS = row.c[colStock];
+        const nombre = cP && cP.v ? String(cP.v).trim() : '';
+        if(!nombre) return;
+        const stockVal = cS && (cS.v !== null && cS.v !== undefined) ? Number(cS.v) : NaN;
+        map[nombre] = isNaN(stockVal) ? Infinity : stockVal; // vacío = no bloquear
+      });
+    }
+    stockMap = map;
   }catch(err){
-    console.log('No se pudo cargar el stock:', err);
+    console.log('No se pudo procesar el stock:', err);
   }
-  // Volvemos a pintar lo que esté visible para reflejar el stock actualizado
   if(typeof renderProducts === 'function') renderProducts();
+}
+
+function loadStock(){
+  // Quitamos el <script> anterior si existe, para poder recargar los datos
+  const old = document.getElementById('stockJsonpScript');
+  if(old) old.remove();
+  const script = document.createElement('script');
+  script.id = 'stockJsonpScript';
+  script.src = `https://docs.google.com/spreadsheets/d/${STOCK_SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:handleStockResponse&sheet=${encodeURIComponent(STOCK_SHEET_NAME)}&_=${Date.now()}`;
+  document.body.appendChild(script);
 }
 
 function getStock(productName){
