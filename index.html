@@ -1060,23 +1060,33 @@ const STOCK_SHEET_ID = '1GPhyxNIvggPzOmFemQQd-9aXt5e3jd1W';
 const STOCK_SHEET_NAME = 'Hoja1'; // nombre de la pestaña donde están los productos
 let stockMap = {}; // { 'Nombre exacto del producto': cantidadDisponible }
 
+function normalizeName(str){
+  return String(str||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // quita tildes
+    .toLowerCase()
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
 function handleStockResponse(response){
   try{
     const table = response.table;
     const cols = table.cols.map(c => (c.label || '').toLowerCase());
-    const colProducto = cols.findIndex(c => c.includes('producto'));
-    const colStock = cols.findIndex(c => c.includes('stock'));
+    let colProducto = cols.findIndex(c => c.includes('producto'));
+    let colStock = cols.findIndex(c => c.includes('stock'));
+    // Si no se detectan los encabezados por nombre, usamos las posiciones fijas
+    // (con range=B:C, la columna B queda en el índice 0 y la C en el índice 1)
+    if(colProducto === -1) colProducto = 0;
+    if(colStock === -1) colStock = 1;
     const map = {};
-    if(colProducto !== -1 && colStock !== -1){
-      table.rows.forEach(row => {
-        const cP = row.c[colProducto];
-        const cS = row.c[colStock];
-        const nombre = cP && cP.v ? String(cP.v).trim() : '';
-        if(!nombre) return;
-        const stockVal = cS && (cS.v !== null && cS.v !== undefined) ? Number(cS.v) : NaN;
-        map[nombre] = isNaN(stockVal) ? Infinity : stockVal; // vacío = no bloquear
-      });
-    }
+    table.rows.forEach(row => {
+      const cP = row.c && row.c[colProducto];
+      const cS = row.c && row.c[colStock];
+      const nombre = cP && cP.v ? String(cP.v).trim() : '';
+      if(!nombre) return;
+      const stockVal = cS && (cS.v !== null && cS.v !== undefined) ? Number(cS.v) : NaN;
+      map[normalizeName(nombre)] = isNaN(stockVal) ? Infinity : stockVal; // vacío = no bloquear
+    });
     stockMap = map;
   }catch(err){
     console.log('No se pudo procesar el stock:', err);
@@ -1090,14 +1100,17 @@ function loadStock(){
   if(old) old.remove();
   const script = document.createElement('script');
   script.id = 'stockJsonpScript';
-  script.src = `https://docs.google.com/spreadsheets/d/${STOCK_SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:handleStockResponse&sheet=${encodeURIComponent(STOCK_SHEET_NAME)}&_=${Date.now()}`;
+  // range=B:C -> solo columnas Producto y Stock; headers=3 -> las primeras 3 filas
+  // (2 vacías + la fila de títulos) se tratan como encabezado, los datos arrancan en la fila 4
+  script.src = `https://docs.google.com/spreadsheets/d/${STOCK_SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:handleStockResponse&sheet=${encodeURIComponent(STOCK_SHEET_NAME)}&range=B:C&headers=3&_=${Date.now()}`;
   document.body.appendChild(script);
 }
 
 function getStock(productName){
+  const key = normalizeName(productName);
   // Si el producto no está en la hoja, se asume que hay stock (no se bloquea)
-  if(!(productName in stockMap)) return Infinity;
-  return stockMap[productName];
+  if(!(key in stockMap)) return Infinity;
+  return stockMap[key];
 }
 
 // Cargar el stock apenas carga la página, y refrescarlo cada 60s mientras el usuario navega
